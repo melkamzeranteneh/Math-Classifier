@@ -343,8 +343,9 @@ instead of `data/train.parquet`; the file is not created by cloning the repo.
 
 ### 3. Prepare and preview the Laya records
 
-Run this from `/content/Math-Classifier` in Colab or from the local repository
-root:
+Run this from the repository root. Preparation does not train the model and
+does not require a GPU; it converts each parquet row into one JSONL choice
+record:
 
 ```bash
 python3 laya_retrain.py \
@@ -354,32 +355,8 @@ python3 laya_retrain.py \
     --preview
 ```
 
-You may also specify the intended trainer device in the same command. The
-value is validated immediately and passed to the trainer if `--trainer` is
-provided; it does not require Torch when no trainer is provided:
-
-```bash
-python3 laya_retrain.py \
-    data/train.parquet \
-    outputs/laya_train.jsonl \
-    --device cuda:1 \
-    --candidates rw,simp,exact,apply,assumption \
-    --preview
-```
-
 The command writes `outputs/laya_train.jsonl` and prints the first record.
-The preview is useful for checking that the dataset columns and state parser
-are correct before processing the complete dataset.
-
-This command can run on CPU and does not load Torch, CUDA, or the Laya model:
-
-```bash
-python3 laya_retrain.py \
-    data/train.parquet \
-    outputs/laya_train.jsonl \
-    --candidates rw,simp,simpa,exact,apply,assumption \
-    --preview
-```
+Inspect the preview before processing the complete dataset.
 
 Each record contains:
 
@@ -396,7 +373,20 @@ The translated state preserves Lean identifiers and expressions while expanding
 common logical symbols into readable phrases. This gives Laya both exact names
 and a clearer description of how the goal relates to the local hypotheses.
 
-### 4. Run fine-tuning on the GPU server
+### 4. Prepare validation data
+
+Use a separate validation parquet file. Do not use the final assessment/test
+file to choose training settings or a checkpoint:
+
+```bash
+python3 laya_retrain.py \
+    data/validation.parquet \
+    outputs/laya_validation.jsonl \
+    --candidates rw,simp,simpa,exact,apply,assumption,constructor,intro,cases,rcases,linarith,nlinarith,norm_num,ring,omega,aesop \
+    --device cpu
+```
+
+### 5. Run fine-tuning on the GPU server
 
 The repository includes a trainer adapter backed by Laya's public
 `laya.train.finetune` API. It trains the choice head and encoder, fits
@@ -411,7 +401,7 @@ For a physical GPU numbered `1`, the command below remaps it to logical
 `cuda:0` internally. This avoids a device-placement issue in some Laya 0.3.x
 training releases:
 
-Run this on the GPU server after the preview succeeds:
+Run this after the training preview and validation preparation succeed:
 
 ```bash
 python3 laya_retrain.py \
@@ -422,6 +412,7 @@ python3 laya_retrain.py \
     --fine-tune \
     --model-dir convaiinnovations/laya \
     --checkpoint-dir outputs/laya-checkpoint \
+    --eval-data outputs/laya_validation.jsonl \
     --epochs 4 \
     --micro-batch 8 \
     --grad-accum 8 \
