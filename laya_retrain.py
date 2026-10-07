@@ -39,7 +39,7 @@ class RetrainConfig:
     candidate_column: str | None = "candidates"
     instructions: str = LAYA_RETRAIN_INSTRUCTIONS
     split_name: str = "train"
-    device: str = "auto"
+    device: str = "cuda:0"
 
     def __post_init__(self) -> None:
         if self.device not in {"auto", "cpu", "cuda"} and not (
@@ -249,9 +249,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--split", default="train")
     parser.add_argument(
         "--device",
-        default="auto",
+        default="cuda:0",
         metavar="DEVICE",
-        help="trainer device: auto, cpu, cuda, cuda:0, cuda:1, ... (default: auto)",
+        help="trainer device: auto, cpu, cuda, cuda:0, cuda:1, ... (default: cuda:0)",
     )
     parser.add_argument(
         "--instructions",

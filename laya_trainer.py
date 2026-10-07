@@ -7,6 +7,7 @@ does not reimplement Laya's model, loss, calibration, or checkpoint format.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -15,7 +16,7 @@ def train(
     records: Sequence[Mapping[str, Any]],
     output_path: str,
     *,
-    device: str = "auto",
+    device: str = "cuda:0",
     model_dir: str = "convaiinnovations/laya",
     checkpoint_dir: str | None = None,
     epochs: int = 4,
@@ -37,12 +38,13 @@ def train(
     """
     if not records:
         raise ValueError("cannot fine-tune Laya with an empty record set")
+    effective_device = _normalise_cuda_device(device)
     try:
         from laya.train import TrainConfig, finetune
     except ImportError as exc:
         raise RuntimeError(
             "This Laya installation does not expose laya.train.finetune. "
-            "Install a Laya release with the fine-tuning API (laya>=0.3.23)."
+            "Install a Laya release with the fine-tuning API (laya>=0.3.28)."
         ) from exc
 
     prepared_path = Path(output_path)
@@ -78,7 +80,7 @@ def train(
         model_dir=model_dir,
         output_dir=str(destination),
         config=config,
-        device=device,
+        device=effective_device,
     )
     if not isinstance(report, dict):
         raise RuntimeError(
@@ -91,3 +93,21 @@ def train(
         "training_data": str(train_path),
         "report": report,
     }
+
+
+def _normalise_cuda_device(device: str) -> str:
+    """Avoid Laya 0.3.x multi-index placement bugs.
+
+    Laya's trainer reliably uses the logical ``cuda`` device.  When the caller
+    requests a physical GPU and CUDA visibility is not already configured,
+    remap that GPU to logical index zero before importing Laya/PyTorch.
+    """
+    if not device.startswith("cuda:"):
+        return device
+    index = device[5:]
+    if not index.isdigit():
+        raise ValueError(f"invalid CUDA device {device!r}")
+    if "CUDA_VISIBLE_DEVICES" not in os.environ:
+        os.environ["CUDA_VISIBLE_DEVICES"] = index
+        return "cuda"
+    return "cuda"

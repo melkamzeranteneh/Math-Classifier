@@ -407,6 +407,10 @@ calibration temperatures, and writes a checkpoint that can be loaded with
 python3 -m pip install --upgrade --no-deps 'laya>=0.3.28,<0.5'
 ```
 
+For a physical GPU numbered `1`, the command below remaps it to logical
+`cuda:0` internally. This avoids a device-placement issue in some Laya 0.3.x
+training releases:
+
 Run this on the GPU server after the preview succeeds:
 
 ```bash
@@ -454,9 +458,10 @@ as JSONL. Use a separate frozen test set on the assessment server and do not
 select a checkpoint after inspecting test metrics.
 
 Supported devices are `auto`, `cpu`, `cuda`, `cuda:0`, `cuda:1`, and other
-`cuda:N` values. With `auto`, the trainer selects CUDA when Torch reports CUDA
-availability. The old `--trainer module:function` hook remains available for
-custom Laya integrations.
+`cuda:N` values. The retraining default is `cuda:0`; pass `--device` to select
+another GPU or CPU. With `auto`, the trainer selects CUDA when Torch reports
+CUDA availability. The old `--trainer module:function` hook remains available
+for custom Laya integrations.
 
 ### Prompt and candidate descriptions
 
