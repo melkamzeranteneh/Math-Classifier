@@ -396,21 +396,18 @@ The translated state preserves Lean identifiers and expressions while expanding
 common logical symbols into readable phrases. This gives Laya both exact names
 and a clearer description of how the goal relates to the local hypotheses.
 
-### 4. Run an actual trainer
+### 4. Run fine-tuning on the GPU server
 
-The repository does not assume a particular Laya fine-tuning API because that
-API can differ between Laya versions. To fine-tune, provide a Python module
-with a callable named `train`:
+The repository includes a trainer adapter backed by Laya's public
+`laya.train.finetune` API. It trains the choice head and encoder, fits
+calibration temperatures, and writes a checkpoint that can be loaded with
+`laya.load`. The adapter requires Laya 0.3.28 or newer:
 
-```python
-# my_trainer.py
-def train(records, output_path):
-    # Connect this stable record format to the Laya training API
-    # for the installed Laya version.
-    ...
+```bash
+python3 -m pip install --upgrade --no-deps 'laya>=0.3.28,<0.5'
 ```
 
-Then run:
+Run this on the GPU server after the preview succeeds:
 
 ```bash
 python3 laya_retrain.py \
@@ -418,38 +415,48 @@ python3 laya_retrain.py \
     outputs/laya_train.jsonl \
     --candidates rw,simp,simpa,exact,apply,assumption,constructor,intro,cases,rcases,linarith,nlinarith,norm_num,ring,omega,aesop \
     --device cuda:1 \
-    --trainer my_trainer:train
+    --fine-tune \
+    --model-dir convaiinnovations/laya \
+    --checkpoint-dir outputs/laya-checkpoint \
+    --epochs 4 \
+    --micro-batch 8 \
+    --grad-accum 8 \
+    --loss rlcd
 ```
 
-The callable receives `records=...`, `output_path=...`, and `device=...`. It is
-responsible for loading Laya and performing fine-tuning on that device:
-
-```python
-# my_trainer.py
-def train(records, output_path, device):
-    import laya
-
-    model = laya.load("convaiinnovations/laya", device=device)
-    # Call the training API supported by the installed Laya version here.
-    print(f"Fine-tuning on {device}")
-```
-
-Then run the wrapper with the Python environment that contains Torch, Laya,
-and the CUDA-compatible dependencies:
+`--fine-tune` writes the prepared records to
+`outputs/laya_train.finetune.jsonl`, then calls Laya's supported trainer. The
+checkpoint directory contains the model files, tokenizer, calibration
+configuration, questions, and `training_report.json`. Checkpoint loading can
+be verified without running evaluation:
 
 ```bash
-PYTHON=/home/jovyan/.venvs/notebook-py3.11/bin/python
-$PYTHON laya_retrain.py \
-    data/train.parquet \
-    outputs/laya_train.jsonl \
-    --candidates rw,simp,simpa,exact,apply,assumption \
-    --trainer my_trainer:train
+python3 - <<'PY'
+import laya
+agent = laya.load("outputs/laya-checkpoint", device="cuda:1")
+print("fine-tuned checkpoint loads successfully")
 ```
 
-Supported choices are `auto`, `cpu`, `cuda`, `cuda:0`, `cuda:1`, and other
-`cuda:N` values. With `auto`, the trainer receives `cuda` when Torch reports
-CUDA availability and `cpu` otherwise. Without `--trainer`, the command only
-creates and validates the training JSONL, which is the expected behavior.
+For a held-out set, first prepare a second JSONL file and pass it with
+`--eval-data`. It must contain the same Laya record schema and must not be used
+to tune the training options:
+
+```bash
+python3 laya_retrain.py \
+    data/validation.parquet \
+    outputs/laya_validation.jsonl \
+    --candidates rw,simp,simpa,exact,apply,assumption \
+    --device cpu
+```
+
+The current adapter supports `--eval-data` when that file is already prepared
+as JSONL. Use a separate frozen test set on the assessment server and do not
+select a checkpoint after inspecting test metrics.
+
+Supported devices are `auto`, `cpu`, `cuda`, `cuda:0`, `cuda:1`, and other
+`cuda:N` values. With `auto`, the trainer selects CUDA when Torch reports CUDA
+availability. The old `--trainer module:function` hook remains available for
+custom Laya integrations.
 
 ### Prompt and candidate descriptions
 

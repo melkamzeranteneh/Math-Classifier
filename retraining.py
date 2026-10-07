@@ -7,6 +7,7 @@ from laya_retrain import (
     prepare_training_records,
     retrain_laya,
 )
+from laya_trainer import train
 
 __all__ = [
     "RetrainConfig",
@@ -14,4 +15,5 @@ __all__ = [
     "prepare_dataset",
     "prepare_training_records",
     "retrain_laya",
+    "train",
 ]

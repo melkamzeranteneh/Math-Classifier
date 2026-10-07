@@ -264,6 +264,27 @@ def _build_parser() -> argparse.ArgumentParser:
         help="print the first generated record after writing it",
     )
     parser.add_argument("--trainer", help="optional remote trainer as module:function")
+    parser.add_argument(
+        "--fine-tune",
+        action="store_true",
+        help="run the built-in laya.train.finetune adapter after preparing records",
+    )
+    parser.add_argument(
+        "--model-dir",
+        default="convaiinnovations/laya",
+        help="base Laya checkpoint directory or Hugging Face model id",
+    )
+    parser.add_argument("--checkpoint-dir", help="directory for the fine-tuned Laya checkpoint")
+    parser.add_argument("--epochs", type=int, default=4)
+    parser.add_argument("--micro-batch", type=int, default=8)
+    parser.add_argument("--grad-accum", type=int, default=8)
+    parser.add_argument("--loss", choices=("rlcd", "soft-ce"), default="rlcd")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--freeze-encoder", action="store_true")
+    parser.add_argument("--shuffle-options", action="store_true")
+    parser.add_argument("--eval-data", type=Path, help="optional held-out JSONL for Laya evaluation")
+    parser.add_argument("--max-len", type=int)
+    parser.add_argument("--head-max-len", type=int)
     return parser
 
 
@@ -281,8 +302,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         instructions=args.instructions,
         device=args.device,
     )
-    trainer = load_callable(args.trainer) if args.trainer else None
-    result = retrain_laya(config, trainer=trainer)
+    if args.fine_tune and args.trainer:
+        raise ValueError("use either --fine-tune or --trainer, not both")
+    if args.fine_tune:
+        from laya_trainer import train
+
+        trainer = train
+        trainer_kwargs = {
+            "model_dir": args.model_dir,
+            "checkpoint_dir": args.checkpoint_dir,
+            "epochs": args.epochs,
+            "micro_batch": args.micro_batch,
+            "grad_accum": args.grad_accum,
+            "loss": args.loss,
+            "seed": args.seed,
+            "freeze_encoder": args.freeze_encoder,
+            "shuffle_options": args.shuffle_options,
+            "eval_data": str(args.eval_data) if args.eval_data else None,
+            "max_len": args.max_len,
+            "head_max_len": args.head_max_len,
+        }
+    else:
+        trainer = load_callable(args.trainer) if args.trainer else None
+        trainer_kwargs = None
+    result = retrain_laya(config, trainer=trainer, trainer_kwargs=trainer_kwargs)
     print(f"prepared translated Laya records: {result}")
     if trainer is not None:
         print(f"trainer device: {_resolve_device(config.device)}")
