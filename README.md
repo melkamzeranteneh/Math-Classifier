@@ -397,10 +397,6 @@ calibration temperatures, and writes a checkpoint that can be loaded with
 python3 -m pip install --upgrade --no-deps 'laya>=0.3.28,<0.5'
 ```
 
-For a physical GPU numbered `1`, the command below remaps it to logical
-`cuda:0` internally. This avoids a device-placement issue in some Laya 0.3.x
-training releases:
-
 Run this after the training preview and validation preparation succeed:
 
 ```bash
@@ -428,31 +424,47 @@ be verified without running evaluation:
 ```bash
 python3 - <<'PY'
 import laya
-agent = laya.load("outputs/laya-checkpoint", device="cuda:1")
+laya.load("outputs/laya-checkpoint", device="cuda:1")
 print("fine-tuned checkpoint loads successfully")
 ```
-
-For a held-out set, first prepare a second JSONL file and pass it with
-`--eval-data`. It must contain the same Laya record schema and must not be used
-to tune the training options:
-
-```bash
-python3 laya_retrain.py \
-    data/validation.parquet \
-    outputs/laya_validation.jsonl \
-    --candidates rw,simp,simpa,exact,apply,assumption \
-    --device cpu
-```
-
-The current adapter supports `--eval-data` when that file is already prepared
-as JSONL. Use a separate frozen test set on the assessment server and do not
-select a checkpoint after inspecting test metrics.
 
 Supported devices are `auto`, `cpu`, `cuda`, `cuda:0`, `cuda:1`, and other
 `cuda:N` values. The retraining default is `cuda:0`; pass `--device` to select
 another GPU or CPU. With `auto`, the trainer selects CUDA when Torch reports
 CUDA availability. The old `--trainer module:function` hook remains available
 for custom Laya integrations.
+
+### 6. Record and export the run
+
+Keep the checkpoint, prepared data, report, and environment record together
+for the separate assessment server:
+
+```bash
+{
+  echo "date: $(date -Is)"
+  echo "git: $(git rev-parse HEAD)"
+  echo "python: $(command -v python3)"
+  python3 --version
+  python3 -m pip freeze
+  python3 pipeline.py runtime
+  python3 pipeline.py devices
+} | tee outputs/laya-checkpoint/run_environment.txt
+```
+
+The important output files are:
+
+```text
+outputs/laya_train.jsonl
+outputs/laya_train.finetune.jsonl
+outputs/laya_validation.jsonl
+outputs/laya-checkpoint/
+outputs/laya-checkpoint/training_report.json
+outputs/laya-checkpoint/run_environment.txt
+```
+
+Copy this frozen checkpoint to the assessment server. Do not retrain or change
+the training settings there; use a separate frozen test set for final
+evaluation.
 
 ### Prompt and candidate descriptions
 
